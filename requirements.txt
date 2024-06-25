@@ -1,0 +1,4 @@
+Flask==2.3.2
+gradio_client==0.2.5
+Pillow==9.5.0
+requests==2.30.0
