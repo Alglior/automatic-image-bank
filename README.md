@@ -11,6 +11,14 @@ This project is an image management system that processes, categorizes, and disp
 - Individual image view with download option
 - Category view for exploring images by tags
 
+## Testing Environment
+
+The scripts in this project were tested with:
+- Invoke AI UI
+- Custom SDXL model
+
+The captions, where the API is used, come from the Florence2 UI, which can be installed via Pinokio, similar to the Invoke AI UI installation process.
+
 ## Prerequisites
 
 Before you begin, ensure you have met the following requirements:
@@ -18,6 +26,8 @@ Before you begin, ensure you have met the following requirements:
 - Python 3.7+
 - ExifTool installed on your system
 - pip (Python package manager)
+- Access to Invoke AI UI (for testing)
+- Access to Florence2 UI via Pinokio (for captions)
 
 ## Installation
 
@@ -45,6 +55,9 @@ Before you begin, ensure you have met the following requirements:
      Download from the official website: https://exiftool.org/
      Add the ExifTool directory to your system PATH.
 
+4. Set up Invoke AI UI and Florence2 UI:
+   Follow the installation instructions for Invoke AI UI and Florence2 UI via Pinokio. These are required for testing and generating captions.
+
 ## Usage
 
 1. Prepare your images:
@@ -64,14 +77,17 @@ Before you begin, ensure you have met the following requirements:
    ```
    This will create an `image_bank.json` file with the image metadata and categories.
 
-4. Start the web server:
+4. Generate captions (optional):
+   If you want to use AI-generated captions, ensure the Florence2 UI is running and use the `caption_florence2.py` script.
+
+5. Start the web server:
    Run the Flask application:
    ```
    python images_bank_server.py
    ```
    The server will start, typically at `http://127.0.0.1:5000/`.
 
-5. Access the web interface:
+6. Access the web interface:
    Open a web browser and go to `http://127.0.0.1:5000/` to browse and search your image collection.
 
 ## Project Structure
@@ -79,7 +95,7 @@ Before you begin, ensure you have met the following requirements:
 - `main.py`: Processes images and extracts metadata
 - `extract.py`: Initializes the image bank database
 - `images_bank_server.py`: Flask server for the web interface
-- `caption_florence2.py`: Script for generating image captions (not directly used in the main workflow)
+- `caption_florence2.py`: Script for generating image captions using Florence2 UI
 - `input_images/`: Directory for input images
 - `output_folder/`: Directory for processed and categorized images
 - `captions.json`: JSON file containing image captions
@@ -104,3 +120,5 @@ This project is licensed under the MIT License - see the `LICENSE` file for deta
 - ExifTool for metadata extraction
 - Flask for the web framework
 - Gradio Client for AI-assisted image captioning
+- Invoke AI UI for testing environment
+- Florence2 UI (via Pinokio) for caption generation
