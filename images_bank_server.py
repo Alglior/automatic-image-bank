@@ -1,6 +1,7 @@
 import os
 import json
 from flask import Flask, request, render_template_string, jsonify, send_from_directory
+from PIL import Image
 
 app = Flask(__name__)
 database_file = 'image_bank.json'
@@ -464,7 +465,7 @@ IMAGE_TEMPLATE = """
             display: flex;
             justify-content: center;
             align-items: center;
-            flex-direction: column; /* Arrange header items vertically */
+            flex-direction: column;
         }
         .header-links {
             display: flex;
@@ -502,7 +503,7 @@ IMAGE_TEMPLATE = """
             margin: 20px auto;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            display: block; /* Ensure the image is displayed as a block element */
+            display: block;
         }
         .download-button {
             margin-top: 20px;
@@ -519,6 +520,127 @@ IMAGE_TEMPLATE = """
         .download-button a:hover {
             background-color: #e0c600;
         }
+        .title {
+            font-size: 2.5em;
+            color: #ffd700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            margin: 30px 0;
+            letter-spacing: 2px;
+        }
+        .description-box {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px auto;
+            max-width: 80%;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .description-box p {
+            margin: 0;
+            line-height: 1.6;
+        }
+        .related-images {
+            margin-top: 40px;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        .related-images h3 {
+            color: #ffd700;
+            margin-bottom: 20px;
+        }
+       .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            justify-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        .image-grid a {
+            display: block;
+            width: 100%;
+            height: 0;
+            padding-bottom: 100%; /* Creates a square aspect ratio */
+            position: relative;
+            overflow: hidden;
+            border-radius: 10px; /* Rounded corners for the container */
+            transition: transform 0.3s ease;
+        }
+        .image-grid img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 10px; /* Rounded corners for the image */
+            transition: transform 0.3s ease;
+        }
+        .image-grid a:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0px 0px rgba(0, 0, 0, 0.2); /* Optional: adds a subtle shadow on hover */
+        }
+        .image-grid a:hover img {
+            border-radius: 12px; /* Slightly larger radius on hover for a smooth effect */
+        }
+        @media (max-width: 480px) {
+            .image-grid {
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            }
+        }
+        .image-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 20px;
+            margin: 20px auto;
+            max-width: 1200px;
+            padding: 0 20px;
+        }
+        .main-image-wrapper {
+            flex: 1;
+            max-width: 70%;
+        }
+        .main-image {
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .image-info {
+            flex: 0 0 25%;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            align-self: stretch;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .image-info h3 {
+            color: #ffd700;
+            margin-top: 0;
+        }
+        .image-info p {
+            margin: 10px 0;
+        }
+        @media (max-width: 768px) {
+            .image-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .main-image-wrapper, .image-info {
+                max-width: 100%;
+                width: 100%;
+            }
+            .image-info {
+                margin-top: 20px;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -529,23 +651,39 @@ IMAGE_TEMPLATE = """
             <a href="/" class="header-link">Home</a>
         </div>
     </header>
-    <h2>{{ title }}</h2>
+    <h2 class="title">{{ title }}</h2>
     <h1>
-    {% for tag in tags.split(', ') %}
+        {% for tag in tags.split(', ') %}
         <a href="/category/{{ tag }}">{{ tag }}</a>{% if not loop.last %}, {% endif %}
-    {% endfor %}
+        {% endfor %}
     </h1>
-    
-        
-        
-
-    
-    <img src="../../output_folder/{{ path }}" alt="{{ tags }}">
-    <p>{{ description }}</p>
+       <div class="image-container">
+        <img class="main-image" src="../../output_folder/{{ path }}" alt="{{ tags }}">
+        <div class="image-info">
+            <h3>Image Information</h3>
+            <p><strong>Type:</strong> {{ img_type }}</p>
+            <p><strong>Dimensions:</strong> {{ img_size }}</p>
+            <p><strong>File Size:</strong> {{ file_size }}</p>
+        </div>
+    </div>
+    <div class="description-box">
+        <p>{{ description }}</p>
+    </div>
     <div class="download-button">
         <a href="../../output_folder/{{ path }}" download>Download Image</a>
     </div>
 
+    <div class="related-images">
+        <h3>Related Images</h3>
+        <div class="image-grid">
+            {% for image in related_images %}
+            <a href="{{ image.url }}">
+                <img src="{{ image.thumbnail }}" alt="{{ image.tags }}">
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    
     <footer>
         <p>&copy; 2024 Image Bank. All rights reserved.</p>
     </footer>
@@ -851,8 +989,10 @@ captions = load_captions()
 def display_image(filename):
     # Find the image in the image bank
     image = next(
-        (img for folder in image_bank.values() for img in folder if img['path'] == filename), None
+        (img for folder in image_bank.values() for img in folder if img['path'] == filename),
+        None
     )
+    
     if image:
         # Construct possible keys for the captions dictionary
         possible_keys = [
@@ -869,10 +1009,7 @@ def display_image(filename):
                 caption_info = captions[key]
                 break
         
-        # Print debug information
-        print(f"Filename: {filename}")
-        print(f"Caption info: {caption_info}")
-        
+        # Get title and description
         if caption_info:
             title = caption_info.get('title', 'No title available')
             description = caption_info.get('description', 'No description available')
@@ -880,15 +1017,43 @@ def display_image(filename):
             title = "No title available"
             description = "No description available"
         
-        # Print more debug information
-        print(f"Title: {title}")
-        print(f"Description: {description}")
+        # Get image type, dimensions, and file size
+        img_path = os.path.join('output_folder', filename)
+        try:
+            with Image.open(img_path) as img:
+                img_type = img.format
+                img_size = f"{img.width}x{img.height}"
+                file_size = os.path.getsize(img_path)
+                file_size_mb = f"{file_size / (1024 * 1024):.2f} MB"
+        except IOError:
+            img_type = "Unknown"
+            img_size = "Unknown"
+            file_size_mb = "Unknown"
         
-        return render_template_string(IMAGE_TEMPLATE, 
-                                      path=filename, 
+        # Find related images (images with at least one matching tag)
+        related_images = []
+        for folder in image_bank.values():
+            for img in folder:
+                if img['path'] != filename and any(tag in img['tags'] for tag in image['tags']):
+                    related_images.append({
+                        "url": f"/image/{img['path']}",
+                        "thumbnail": f"../../output_folder/{img['path']}",
+                        "tags": ', '.join(img['tags'])
+                    })
+                    if len(related_images) >= 8:  # Limit to 8 related images
+                        break
+            if len(related_images) >= 8:
+                break
+        
+        return render_template_string(IMAGE_TEMPLATE,
+                                      path=filename,
                                       tags=', '.join(image['tags']),
                                       title=title,
-                                      description=description)
+                                      description=description,
+                                      related_images=related_images,
+                                      img_type=img_type,
+                                      img_size=img_size,
+                                      file_size=file_size_mb)
     else:
         return "Image not found", 404
 
