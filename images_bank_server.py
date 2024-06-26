@@ -20,113 +20,7 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <title>Image Bank Search</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-
-   <script>
-        let currentPage = 1;
-        const itemsPerPage = {{ items_per_page }};
-        const maxPageButtons = 8;
-
-function searchImages(page = 1, scrollToTop = false) {
-    currentPage = page;
-    const query = document.getElementById('searchBox').value.toLowerCase();
-    const endpoint = query ? `/search?q=${query}&page=${page}` : `/latest-images?page=${page}`;
-    
-    fetch(endpoint)
-        .then(response => response.json())
-        .then(data => {
-            const resultsDiv = document.getElementById('results');
-            resultsDiv.innerHTML = '';
-            data.images.forEach(image => {
-                const imageContainer = document.createElement('div');
-                imageContainer.className = 'image-container';
-                
-                const imgElement = document.createElement('img');
-                imgElement.src = 'output_folder/' + image.path;
-                imgElement.alt = image.tags.join(', ');
-                imageContainer.appendChild(imgElement);
-                
-                const infoDiv = document.createElement('div');
-                infoDiv.className = 'image-info';
-                infoDiv.innerHTML = `
-                    <h3>${image.title || 'No title'}</h3>
-                    <p>${image.tags.slice(0, 3).join(', ')}</p>
-                `;
-                imageContainer.appendChild(infoDiv);
-                
-                imageContainer.onclick = () => { window.location.href = '/image/' + image.path };
-                resultsDiv.appendChild(imageContainer);
-            });
-
-            updatePagination(data.total_pages, page);
-
-            if (scrollToTop) {
-                window.scrollTo({top: 0, behavior: 'smooth'});
-            }
-        });
-}
-
-        function updatePagination(totalPages, currentPage) {
-            const paginationDivTop = document.getElementById('pagination-top');
-            const paginationDivBottom = document.getElementById('pagination-bottom');
-            paginationDivTop.innerHTML = '';
-            paginationDivBottom.innerHTML = '';
-
-            const createPageButton = (page, text = page, isBottom = false) => {
-                const pageButton = document.createElement('button');
-                pageButton.textContent = text;
-                pageButton.onclick = () => searchImages(page, isBottom);
-                if (page === currentPage) {
-                    pageButton.style.fontWeight = 'bold';
-                }
-                return pageButton;
-            };
-
-            if (currentPage > 1) {
-                paginationDivTop.appendChild(createPageButton(1, 'First'));
-                paginationDivBottom.appendChild(createPageButton(1, 'First', true));
-            }
-
-            const half = Math.floor(maxPageButtons / 2);
-            let start = Math.max(currentPage - half, 1);
-            let end = Math.min(start + maxPageButtons - 1, totalPages);
-
-            if (end - start < maxPageButtons - 1) {
-                start = Math.max(end - maxPageButtons + 1, 1);
-            }
-
-            for (let i = start; i <= end; i++) {
-                const pageButtonTop = createPageButton(i);
-                const pageButtonBottom = createPageButton(i, i, true);
-                paginationDivTop.appendChild(pageButtonTop);
-                paginationDivBottom.appendChild(pageButtonBottom);
-            }
-
-            if (currentPage < totalPages) {
-                paginationDivTop.appendChild(createPageButton(totalPages, 'Last'));
-                paginationDivBottom.appendChild(createPageButton(totalPages, 'Last', true));
-            }
-        }
-
-        window.onload = function() {
-            searchImages();
-            document.getElementById('searchBox').addEventListener('input', () => searchImages(1));
-            document.getElementById('stickySearchBox').addEventListener('input', () => {
-                document.getElementById('searchBox').value = document.getElementById('stickySearchBox').value;
-                searchImages(1);
-            });
-
-            window.addEventListener('scroll', function() {
-                var header = document.querySelector('header');
-                var sticky = document.querySelector('.sticky-search');
-                if (window.pageYOffset > header.offsetTop + header.offsetHeight) {
-                    sticky.style.display = 'block';
-                } else {
-                    sticky.style.display = 'none';
-                }
-            });
-        }
-    </script>
-
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
 <body>
     <header>
@@ -269,39 +163,7 @@ IMAGE_TEMPLATE = """
     <meta charset="UTF-8">
     <title>{{ tags }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    </div>
-    <script>
-        document.querySelectorAll('.format-button').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                const downloadUrl = this.href;
-                
-                fetch(downloadUrl)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-                        return response.blob();
-                    })
-                    .then(blob => {
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.style.display = 'none';
-                        a.href = url;
-                        // Extract the format from the button's text
-                        const format = this.textContent.split(' ')[1].toLowerCase();
-                        a.download = `{{ path.split('/')[-1].split('.')[0] }}.${format}`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                    })
-                    .catch(e => {
-                        console.error('Download failed:', e);
-                        alert(`Download failed: ${e.message}`);
-                    });
-            });
-        });
-    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
 <body>
     <header>
@@ -314,10 +176,10 @@ IMAGE_TEMPLATE = """
     <h2 class="title">{{ title }}</h2>
     <h1>
         {% for tag in tags.split(', ') %}
-        <a href="/category/{{ tag }}">{{ tag }}</a>{% if not loop.last %}, {% endif %}
+            <a href="/category/{{ tag }}">{{ tag }}</a>{% if not loop.last %}, {% endif %}
         {% endfor %}
     </h1>
-       <div class="image-container">
+    <div class="image-container">
         <img class="main-image" src="../../output_folder/{{ path }}" alt="{{ tags }}">
         <div class="image-info">
             <h3>Image Information</h3>
@@ -331,10 +193,9 @@ IMAGE_TEMPLATE = """
     </div>
     <h3>Download Section</h3>
     <div class="download-options">
-    
         <div class="format-buttons">
             {% for format in ['JPEG', 'PNG', 'TIFF', 'BMP', 'WEBP', 'GIF'] %}
-                <a href="/download/{{ path }}/{{ format }}" class="format-button" download>Download {{ format }}</a>
+                <a href="/download/{{ path }}/{{ format }}" class="format-button" data-filename="{{ path.split('/')[-1].split('.')[0] }}" download>Download {{ format }}</a>
             {% endfor %}
         </div>
     </div>
@@ -342,13 +203,18 @@ IMAGE_TEMPLATE = """
         <h3>Related Images</h3>
         <div class="image-grid">
             {% for image in related_images %}
-            <a href="{{ image.url }}">
-                <img src="{{ image.thumbnail }}" alt="{{ image.tags }}">
-            </a>
+                <div class="related-image-container">
+                    <a href="{{ image.url }}">
+                        <img src="{{ image.thumbnail }}" alt="{{ image.tags }}">
+                    </a>
+                    <div class="related-image-info">
+                        <h4>{{ image.title }}</h4>
+                        <p>{{ image.tags[:3]|join(', ') }}</p>
+                    </div>
+                </div>
             {% endfor %}
         </div>
     </div>
-    
     <footer>
         <p>&copy; 2024 Image Bank. All rights reserved.</p>
     </footer>
@@ -363,96 +229,10 @@ CATEGORY_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <title>{{ category }}</title>
-        <p>{{ description }}</p>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script>
-        let currentPage = 1;
-        const maxPageButtons = 5;  // Limit the number of pagination buttons visible
-
-        function loadCategory(page = 1) {
-            currentPage = page;
-            fetch(`/category_data/{{ category }}?page=${page}`)
-                .then(response => response.json())
-                .then(data => {
-                    const resultsDiv = document.getElementById('results');
-                    resultsDiv.innerHTML = '';
-                    data.images.forEach(image => {
-                        const imageContainer = document.createElement('div');
-                        imageContainer.className = 'image-container';
-                        
-                        const imgElement = document.createElement('img');
-                        imgElement.src = '../output_folder/' + image.path;
-                        imgElement.alt = image.tags.join(', ');
-                        imageContainer.appendChild(imgElement);
-                        
-                        const infoDiv = document.createElement('div');
-                        infoDiv.className = 'image-info';
-                        infoDiv.innerHTML = `
-                            <h3>${image.title}</h3>
-                            <p>${image.tags.slice(0, 3).join(', ')}</p>
-                        `;
-                        imageContainer.appendChild(infoDiv);
-                        
-                        imageContainer.onclick = () => { window.location.href = '/image/' + image.path };
-                        resultsDiv.appendChild(imageContainer);
-                    });
-
-                    updatePagination(data.total_pages, page);
-                });
-        }
-
-        function updatePagination(totalPages, currentPage) {
-            const paginationDivTop = document.getElementById('pagination-top');
-            const paginationDivBottom = document.getElementById('pagination-bottom');
-            paginationDivTop.innerHTML = '';
-            paginationDivBottom.innerHTML = '';
-
-            const createPageButton = (page, text = page) => {
-                const pageButton = document.createElement('button');
-                pageButton.textContent = text;
-                pageButton.onclick = () => loadCategory(page);
-                if (page === currentPage) {
-                    pageButton.style.fontWeight = 'bold';
-                }
-                return pageButton;
-            };
-
-            // Add "First" button
-            if (currentPage > 1) {
-                paginationDivTop.appendChild(createPageButton(1, 'First'));
-                paginationDivBottom.appendChild(createPageButton(1, 'First'));
-            }
-
-            // Determine the range of page buttons to show
-            const half = Math.floor(maxPageButtons / 2);
-            let start = Math.max(currentPage - half, 1);
-            let end = Math.min(start + maxPageButtons - 1, totalPages);
-
-            if (end - start < maxPageButtons - 1) {
-                start = Math.max(end - maxPageButtons + 1, 1);
-            }
-
-            // Add page buttons
-            for (let i = start; i <= end; i++) {
-                const pageButtonTop = createPageButton(i);
-                const pageButtonBottom = createPageButton(i);
-                paginationDivTop.appendChild(pageButtonTop);
-                paginationDivBottom.appendChild(pageButtonBottom);
-            }
-
-            // Add "Last" button
-            if (currentPage < totalPages) {
-                paginationDivTop.appendChild(createPageButton(totalPages, 'Last'));
-                paginationDivBottom.appendChild(createPageButton(totalPages, 'Last'));
-            }
-        }
-
-        window.onload = function() {
-            loadCategory();  // Load category images on initial load
-        }
-    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
-<body>
+<body data-category="{{ category }}">
     <header>
         <h1>Image Bank</h1>
         <div class="header-links">
@@ -607,21 +387,14 @@ def display_image(filename):
     img_path = os.path.join('output_folder', filename)
     try:
         with Image.open(img_path) as img:
-            original_format = img.format
-            img_type = original_format
+            img_type = img.format
             img_size = f"{img.width}x{img.height}"
             file_size = os.path.getsize(img_path)
             file_size_mb = f"{file_size / (1024 * 1024):.2f} MB"
-            
-            # Prepare available formats
-            available_formats = ['JPEG', 'PNG', 'TIFF', 'BMP']
-            if original_format not in available_formats:
-                available_formats.append(original_format)
     except IOError:
         img_type = "Unknown"
         img_size = "Unknown"
         file_size_mb = "Unknown"
-        available_formats = []
 
     # Find related images (images with the same first tag)
     related_images = []
@@ -630,10 +403,14 @@ def display_image(filename):
         for folder in image_bank.values():
             for img in folder:
                 if img['path'] != filename and first_tag in img['tags']:
+                    # Get title for related image
+                    related_caption_key = os.path.join("input_images", os.path.basename(img['path']))
+                    related_title = captions.get(related_caption_key, {}).get('title', 'No title available')
                     related_images.append({
                         "url": f"/image/{img['path']}",
                         "thumbnail": f"../../output_folder/{img['path']}",
-                        "tags": ', '.join(img['tags'])
+                        "tags": img['tags'],
+                        "title": related_title
                     })
                     if len(related_images) >= 8:  # Limit to 8 related images
                         break
@@ -648,8 +425,7 @@ def display_image(filename):
                                   related_images=related_images,
                                   img_type=img_type,
                                   img_size=img_size,
-                                  file_size=file_size_mb,
-                                  available_formats=available_formats)
+                                  file_size=file_size_mb)
 @app.route('/latest-images')
 def latest_images():
     page = int(request.args.get('page', 1))
