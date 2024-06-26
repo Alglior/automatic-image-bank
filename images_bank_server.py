@@ -1,8 +1,9 @@
 import os
 import json
-from flask import Flask, request, render_template_string, jsonify, send_from_directory
+from flask import Flask, request,current_app,send_file,abort, render_template_string, jsonify, send_from_directory
 from PIL import Image
-
+import io
+import logging
 app = Flask(__name__)
 database_file = 'image_bank.json'
 image_root_folder = 'output_folder'  # The root folder containing categorized images
@@ -624,6 +625,10 @@ IMAGE_TEMPLATE = """
             color: #ffd700;
             margin-top: 0;
         }
+        h3 {
+            color: #ffd700;
+            margin-top: 0;
+        }
         .image-info p {
             margin: 10px 0;
         }
@@ -640,8 +645,80 @@ IMAGE_TEMPLATE = """
                 margin-top: 20px;
             }
         }
-
+        .download-options {
+            margin-top: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .format-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .format-button {
+            padding: 8px 15px;
+            background-color: #2c2c6c;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .format-button:hover, .format-button.selected {
+            background-color: #ffd700;
+            color: #1a1a40;
+        }
+        .download-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #ffd700;
+            color: #1a1a40;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        .download-button:hover {
+            background-color: #e0c600;
+        }
     </style>
+    </div>
+    <script>
+        document.querySelectorAll('.format-button').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const downloadUrl = this.href;
+                
+                fetch(downloadUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        // Extract the format from the button's text
+                        const format = this.textContent.split(' ')[1].toLowerCase();
+                        a.download = `{{ path.split('/')[-1].split('.')[0] }}.${format}`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                    })
+                    .catch(e => {
+                        console.error('Download failed:', e);
+                        alert(`Download failed: ${e.message}`);
+                    });
+            });
+        });
+    </script>
 </head>
 <body>
     <header>
@@ -669,10 +746,15 @@ IMAGE_TEMPLATE = """
     <div class="description-box">
         <p>{{ description }}</p>
     </div>
-    <div class="download-button">
-        <a href="../../output_folder/{{ path }}" download>Download Image</a>
+    <h3>Download Section</h3>
+    <div class="download-options">
+    
+        <div class="format-buttons">
+            {% for format in ['JPEG', 'PNG', 'TIFF', 'BMP', 'WEBP', 'GIF'] %}
+                <a href="/download/{{ path }}/{{ format }}" class="format-button" download>Download {{ format }}</a>
+            {% endfor %}
+        </div>
     </div>
-
     <div class="related-images">
         <h3>Related Images</h3>
         <div class="image-grid">
@@ -993,48 +1075,55 @@ def display_image(filename):
         None
     )
     
-    if image:
-        # Construct possible keys for the captions dictionary
-        possible_keys = [
-            filename,
-            os.path.join('input_images', filename),
-            filename.split('/')[-1],  # Just the filename without path
-            os.path.join('input_images', filename.split('/')[-1])
-        ]
-        
-        # Try to find the caption info using the possible keys
-        caption_info = None
-        for key in possible_keys:
-            if key in captions:
-                caption_info = captions[key]
-                break
-        
-        # Get title and description
-        if caption_info:
-            title = caption_info.get('title', 'No title available')
-            description = caption_info.get('description', 'No description available')
-        else:
-            title = "No title available"
-            description = "No description available"
-        
-        # Get image type, dimensions, and file size
-        img_path = os.path.join('output_folder', filename)
-        try:
-            with Image.open(img_path) as img:
-                img_type = img.format
-                img_size = f"{img.width}x{img.height}"
-                file_size = os.path.getsize(img_path)
-                file_size_mb = f"{file_size / (1024 * 1024):.2f} MB"
-        except IOError:
-            img_type = "Unknown"
-            img_size = "Unknown"
-            file_size_mb = "Unknown"
-        
-        # Find related images (images with at least one matching tag)
-        related_images = []
+    if not image:
+        abort(404, description="Image not found")
+
+    # Construct possible keys for the captions dictionary
+    possible_keys = [
+        filename,
+        os.path.join('input_images', filename),
+        filename.split('/')[-1],  # Just the filename without path
+        os.path.join('input_images', filename.split('/')[-1])
+    ]
+    
+    # Try to find the caption info using the possible keys
+    caption_info = None
+    for key in possible_keys:
+        if key in captions:
+            caption_info = captions[key]
+            break
+    
+    # Get title and description
+    title = caption_info.get('title', 'No title available') if caption_info else "No title available"
+    description = caption_info.get('description', 'No description available') if caption_info else "No description available"
+    
+    # Get image type, dimensions, and file size
+    img_path = os.path.join('output_folder', filename)
+    try:
+        with Image.open(img_path) as img:
+            original_format = img.format
+            img_type = original_format
+            img_size = f"{img.width}x{img.height}"
+            file_size = os.path.getsize(img_path)
+            file_size_mb = f"{file_size / (1024 * 1024):.2f} MB"
+            
+            # Prepare available formats
+            available_formats = ['JPEG', 'PNG', 'TIFF', 'BMP']
+            if original_format not in available_formats:
+                available_formats.append(original_format)
+    except IOError:
+        img_type = "Unknown"
+        img_size = "Unknown"
+        file_size_mb = "Unknown"
+        available_formats = []
+
+    # Find related images (images with the same first tag)
+    related_images = []
+    if image['tags']:
+        first_tag = image['tags'][0]
         for folder in image_bank.values():
             for img in folder:
-                if img['path'] != filename and any(tag in img['tags'] for tag in image['tags']):
+                if img['path'] != filename and first_tag in img['tags']:
                     related_images.append({
                         "url": f"/image/{img['path']}",
                         "thumbnail": f"../../output_folder/{img['path']}",
@@ -1044,18 +1133,71 @@ def display_image(filename):
                         break
             if len(related_images) >= 8:
                 break
-        
-        return render_template_string(IMAGE_TEMPLATE,
-                                      path=filename,
-                                      tags=', '.join(image['tags']),
-                                      title=title,
-                                      description=description,
-                                      related_images=related_images,
-                                      img_type=img_type,
-                                      img_size=img_size,
-                                      file_size=file_size_mb)
-    else:
-        return "Image not found", 404
+
+    return render_template_string(IMAGE_TEMPLATE,
+                                  path=filename,
+                                  tags=', '.join(image['tags']),
+                                  title=title,
+                                  description=description,
+                                  related_images=related_images,
+                                  img_type=img_type,
+                                  img_size=img_size,
+                                  file_size=file_size_mb,
+                                  available_formats=available_formats)
+
+@app.route('/download/<path:filename>/<format>')
+def download_image(filename, format):
+    try:
+        logging.info(f"Attempting to download image: {filename} in format: {format}")
+
+        img_path = os.path.join(current_app.root_path, 'output_folder', filename)
+        logging.info(f"Full image path: {img_path}")
+
+        if not os.path.exists(img_path):
+            logging.error(f"Image file not found: {img_path}")
+            abort(404, description="Image file not found")
+
+        logging.info(f"Image file found: {img_path}")
+
+        with Image.open(img_path) as img:
+            byte_io = io.BytesIO()
+            
+            if format.upper() in ['JPEG', 'JPG']:
+                if img.mode in ['RGBA', 'LA']:
+                    img = img.convert('RGB')
+                img.save(byte_io, format='JPEG', quality=95)
+            elif format.upper() == 'PNG':
+                img.save(byte_io, format='PNG')
+            elif format.upper() == 'TIFF':
+                img.save(byte_io, format='TIFF')
+            elif format.upper() == 'BMP':
+                img.save(byte_io, format='BMP')
+            elif format.upper() == 'WEBP':
+                img.save(byte_io, format='WEBP')
+            elif format.upper() == 'GIF':
+                img.save(byte_io, format='GIF')
+            else:
+                logging.error(f"Unsupported format: {format}")
+                abort(400, description="Unsupported image format")
+            
+            byte_io.seek(0)
+            
+            download_name = f"{os.path.splitext(filename)[0]}.{format.lower()}"
+            
+            logging.info(f"Sending file: {download_name}")
+            return send_file(
+                byte_io,
+                as_attachment=True,
+                download_name=download_name,
+                mimetype=f'image/{format.lower()}'
+            )
+
+    except Exception as e:
+        logging.error(f"Error during download of {filename} in {format} format: {str(e)}")
+        abort(500, description=f"Server error during download: {str(e)}")
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 
 # Debug route to view all captions
 @app.route('/debug/captions')
