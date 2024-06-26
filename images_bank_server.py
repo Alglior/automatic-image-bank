@@ -26,44 +26,44 @@ HTML_TEMPLATE = """
         const itemsPerPage = {{ items_per_page }};
         const maxPageButtons = 8;
 
-        function searchImages(page = 1, scrollToTop = false) {
-            currentPage = page;
-            const query = document.getElementById('searchBox').value.toLowerCase();
-            const endpoint = query ? `/search?q=${query}&page=${page}` : `/latest-images?page=${page}`;
-            
-            fetch(endpoint)
-                .then(response => response.json())
-                .then(data => {
-                    const resultsDiv = document.getElementById('results');
-                    resultsDiv.innerHTML = '';
-                    data.images.forEach(image => {
-                        const imageContainer = document.createElement('div');
-                        imageContainer.className = 'image-container';
-                        
-                        const imgElement = document.createElement('img');
-                        imgElement.src = 'output_folder/' + image.path;
-                        imgElement.alt = image.tags.join(', ');
-                        imageContainer.appendChild(imgElement);
-                        
-                        const infoDiv = document.createElement('div');
-                        infoDiv.className = 'image-info';
-                        infoDiv.innerHTML = `
-                            <h3>${image.title}</h3>
-                            <p>${image.tags.slice(0, 3).join(', ')}</p>
-                        `;
-                        imageContainer.appendChild(infoDiv);
-                        
-                        imageContainer.onclick = () => { window.location.href = '/image/' + image.path };
-                        resultsDiv.appendChild(imageContainer);
-                    });
+function searchImages(page = 1, scrollToTop = false) {
+    currentPage = page;
+    const query = document.getElementById('searchBox').value.toLowerCase();
+    const endpoint = query ? `/search?q=${query}&page=${page}` : `/latest-images?page=${page}`;
+    
+    fetch(endpoint)
+        .then(response => response.json())
+        .then(data => {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+            data.images.forEach(image => {
+                const imageContainer = document.createElement('div');
+                imageContainer.className = 'image-container';
+                
+                const imgElement = document.createElement('img');
+                imgElement.src = 'output_folder/' + image.path;
+                imgElement.alt = image.tags.join(', ');
+                imageContainer.appendChild(imgElement);
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'image-info';
+                infoDiv.innerHTML = `
+                    <h3>${image.title || 'No title'}</h3>
+                    <p>${image.tags.slice(0, 3).join(', ')}</p>
+                `;
+                imageContainer.appendChild(infoDiv);
+                
+                imageContainer.onclick = () => { window.location.href = '/image/' + image.path };
+                resultsDiv.appendChild(imageContainer);
+            });
 
-                    updatePagination(data.total_pages, page);
+            updatePagination(data.total_pages, page);
 
-                    if (scrollToTop) {
-                        window.scrollTo({top: 0, behavior: 'smooth'});
-                    }
-                });
-        }
+            if (scrollToTop) {
+                window.scrollTo({top: 0, behavior: 'smooth'});
+            }
+        });
+}
 
         function updatePagination(totalPages, currentPage) {
             const paginationDivTop = document.getElementById('pagination-top');
@@ -524,8 +524,8 @@ def search():
         for image in images:
             if any(query in tag.lower() for tag in image['tags']):
                 # Get the title from the captions dictionary
-                filename = os.path.basename(image['path'])
-                title = captions.get(filename, {}).get('title', '')  # Use an empty string as the default value
+                caption_key = os.path.join("input_images", os.path.basename(image['path']))
+                title = captions.get(caption_key, {}).get('title', '')  # Use an empty string as the default value
                 image['title'] = title  # Add the title to the image object
                 results.append(image)
     
