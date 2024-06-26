@@ -4,6 +4,9 @@ from flask import Flask, request,current_app,send_file,abort, render_template_st
 from PIL import Image
 import io
 import logging
+from operator import itemgetter
+
+
 app = Flask(__name__)
 database_file = 'image_bank.json'
 image_root_folder = 'output_folder'  # The root folder containing categorized images
@@ -18,130 +21,102 @@ HTML_TEMPLATE = """
     <title>Image Bank Search</title>
     <style>
         body {
-            background-color: #1a1a40;
+            background-color: #0f0f1a;
             color: #ffffff;
             font-family: Arial, sans-serif;
-            text-align: center;
             margin: 0;
             padding: 0;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
-            align-items: center; /* Center content horizontally */
-            min-height: 100vh;
-            overflow-x: hidden;
         }
         header, footer {
-            background-color: #0d0d26;
-            padding: 10px;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column; /* Arrange header items vertically */
-        }
-        .header-links {
-            display: flex;
-            justify-content: center;
-            margin-top: 10px;
-        }
-        .header-link {
-            margin: 0 10px;
-            padding: 10px 20px;
-            background-color: #ffd700;
-            color: #1a1a40;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-        .header-link:hover {
-            background-color: #e0c600;
-        }
-        footer {
-            bottom: 0;
-            left: 0;
+            background-color: #1a1a2e;
+            padding: 20px;
+            text-align: center;
         }
         h1 {
             color: #ffd700;
-            margin: 20px 0;
+            margin: 0 0 20px 0;
         }
-        h1 a {
-            color: #ffd700;
-            text-decoration: none;
-        }
-        h1 a:hover {
-            text-decoration: underline;
-        }
-        #results {
-            margin-top: 20px;
-            margin-right:5%;
-            margin-left:5%;
-            column-count: 7; /* Number of columns */
-            column-gap: 2%; /* Gap between columns */
-        }
-        .image-container {
-            margin-bottom: 20px;
-            margin-right:10%;
-            margin-left:10%;
-            break-inside: avoid; /* Prevent container from breaking across columns */
-            display: inline-block; /* Ensure inline block for proper layout */
-            width: 100%; /* Full width for each container */
-        }
-        img {
-            width: 100%; /* Image fills its container */
-            border-radius: 20px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        img:hover {
-            transform: scale(1.05);
-        }
-        .pagination {
-            display: flex;
-            justify-content: center;
-            margin: 20px;
-        }
-        .pagination button {
-            padding: 10px 15px;
-            margin: 5px;
-            background-color: #ffd700;
-            border: none;
-            border-radius: 5px;
-            color: #1a1a40;
-            cursor: pointer;
-        }
-        .pagination button:hover {
-            background-color: #e0c600;
-        }
-
         .search-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 20px 0;
-            flex-wrap: wrap;
+            margin-bottom: 20px;
         }
         input[type="text"] {
             width: 300px;
             padding: 10px;
-            margin-right: 10px;
-            margin-left: 20px;
             border: none;
             border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin-right: 10px;
         }
         button {
             padding: 10px 20px;
             background-color: #ffd700;
+            color: #1a1a2e;
             border: none;
             border-radius: 5px;
-            color: #1a1a40;
-            font-size: 16px;
             cursor: pointer;
-            margin: 5px;
+            transition: background-color 0.3s;
         }
         button:hover {
             background-color: #e0c600;
+        }
+        #results {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .image-container {
+            position: relative;
+            overflow: hidden;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s;
+        }
+        .image-container:hover {
+            transform: translateY(-5px);
+        }
+        .image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .image-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+        }
+        .image-container:hover .image-info {
+            transform: translateY(0);
+        }
+        .image-info h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #ffd700;
+        }
+        .image-info p {
+            margin: 5px 0 0;
+            font-size: 14px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .pagination button {
+            margin: 0 5px;
+        }
+        footer {
+            margin-top: auto;
         }
     </style>
     <script>
@@ -152,7 +127,9 @@ HTML_TEMPLATE = """
         function searchImages(page = 1) {
             currentPage = page;
             const query = document.getElementById('searchBox').value.toLowerCase();
-            fetch(`/search?q=${query}&page=${page}`)
+            const endpoint = query ? `/search?q=${query}&page=${page}` : `/latest-images?page=${page}`;
+            
+            fetch(endpoint)
                 .then(response => response.json())
                 .then(data => {
                     const resultsDiv = document.getElementById('results');
@@ -160,11 +137,21 @@ HTML_TEMPLATE = """
                     data.images.forEach(image => {
                         const imageContainer = document.createElement('div');
                         imageContainer.className = 'image-container';
+                        
                         const imgElement = document.createElement('img');
                         imgElement.src = 'output_folder/' + image.path;
                         imgElement.alt = image.tags.join(', ');
-                        imgElement.onclick = () => { window.location.href = '/image/' + image.path };
                         imageContainer.appendChild(imgElement);
+                        
+                        const infoDiv = document.createElement('div');
+                        infoDiv.className = 'image-info';
+                        infoDiv.innerHTML = `
+                            <h3>${image.title}</h3>
+                            <p>${image.tags.slice(0, 3).join(', ')}</p>
+                        `;
+                        imageContainer.appendChild(infoDiv);
+                        
+                        imageContainer.onclick = () => { window.location.href = '/image/' + image.path };
                         resultsDiv.appendChild(imageContainer);
                     });
 
@@ -249,26 +236,19 @@ CATEGORIES_TEMPLATE = """
     <title>Categories</title>
     <style>
         body {
-            background-color: #1a1a40;
+            background-color: #0f0f1a;
             color: #ffffff;
             font-family: Arial, sans-serif;
-            text-align: center;
             margin: 0;
             padding: 0;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            overflow-x: hidden;
         }
         header, footer {
-            background-color: #0d0d26;
-            padding: 10px;
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
+            background-color: #1a1a2e;
+            padding: 20px;
+            text-align: center;
         }
         footer {
             bottom: 0;
@@ -428,7 +408,7 @@ CATEGORIES_TEMPLATE = """
         <h1>Image Bank</h1>
         <a href="/" class="header-link">Home</a>
     </header>
-    <h1>Categories</h1>
+    <center><h1>Categories</h1></center>
     <div class="pagination" id="pagination-top"></div>
     <div class="category-container"></div>
     <div class="pagination" id="pagination-bottom"></div>
@@ -448,7 +428,7 @@ IMAGE_TEMPLATE = """
     <title>{{ tags }}</title>
     <style>
         body {
-            background-color: #1a1a40;
+            background-color: #0f0f1a;
             color: #ffffff;
             font-family: Arial, sans-serif;
             text-align: center;
@@ -460,7 +440,7 @@ IMAGE_TEMPLATE = """
             overflow-x: hidden;
         }
         header, footer {
-            background-color: #0d0d26;
+            background-color: #1a1a2e;
             padding: 10px;
             width: 100%;
             display: flex;
@@ -546,14 +526,20 @@ IMAGE_TEMPLATE = """
             background-color: rgba(255, 255, 255, 0.05);
             border-radius: 10px;
         }
+        .related-images {
+            margin-top: 40px;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
         .related-images h3 {
             color: #ffd700;
             margin-bottom: 20px;
         }
-       .image-grid {
+        .image-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
+            gap: 10px;
             justify-items: center;
             max-width: 1200px;
             margin: 0 auto;
@@ -563,10 +549,10 @@ IMAGE_TEMPLATE = """
             display: block;
             width: 100%;
             height: 0;
-            padding-bottom: 100%; /* Creates a square aspect ratio */
+            padding-bottom: 100%;
             position: relative;
             overflow: hidden;
-            border-radius: 10px; /* Rounded corners for the container */
+            border-radius: 20px;
             transition: transform 0.3s ease;
         }
         .image-grid img {
@@ -576,15 +562,15 @@ IMAGE_TEMPLATE = """
             width: 100%;
             height: 100%;
             object-fit: cover;
-            border-radius: 10px; /* Rounded corners for the image */
+            border-radius: 20px;
             transition: transform 0.3s ease;
         }
         .image-grid a:hover {
             transform: scale(1.05);
-            box-shadow: 0 0px 0px rgba(0, 0, 0, 0.2); /* Optional: adds a subtle shadow on hover */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
         .image-grid a:hover img {
-            border-radius: 12px; /* Slightly larger radius on hover for a smooth effect */
+            border-radius: 22px;
         }
         @media (max-width: 480px) {
             .image-grid {
@@ -783,26 +769,19 @@ CATEGORY_TEMPLATE = """
         <p>{{ description }}</p>
     <style>
         body {
-            background-color: #1a1a40;
+            background-color: #0f0f1a;
             color: #ffffff;
             font-family: Arial, sans-serif;
-            text-align: center;
             margin: 0;
             padding: 0;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
-            align-items: center; /* Center content horizontally */
-            min-height: 100vh;
-            overflow-x: hidden;
         }
         header, footer {
-            background-color: #0d0d26;
-            padding: 10px;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column; /* Arrange header items vertically */
+            background-color: #1a1a2e;
+            padding: 20px;
+            text-align: center;
         }
         .header-links {
             display: flex;
@@ -837,17 +816,50 @@ CATEGORY_TEMPLATE = """
             text-decoration: underline;
         }
         #results {
-            margin-top: 20px;
-            margin-right:5%;
-            margin-left:5%;
-            column-count: 7; /* Number of columns */
-            column-gap: 2%; /* Gap between columns */
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
         }
         .image-container {
-            margin-bottom: 20px;
-            break-inside: avoid; /* Prevent container from breaking across columns */
-            display: inline-block; /* Ensure inline block for proper layout */
-            width: 100%; /* Full width for each container */
+            position: relative;
+            overflow: hidden;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s;
+        }
+        .image-container:hover {
+            transform: translateY(-5px);
+        }
+        .image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .image-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+        }
+        .image-container:hover .image-info {
+            transform: translateY(0);
+        }
+        .image-info h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #ffd700;
+        }
+        .image-info p {
+            margin: 5px 0 0;
+            font-size: 14px;
         }
         img {
             width: 100%; /* Image fills its container */
@@ -891,11 +903,21 @@ CATEGORY_TEMPLATE = """
                     data.images.forEach(image => {
                         const imageContainer = document.createElement('div');
                         imageContainer.className = 'image-container';
+                        
                         const imgElement = document.createElement('img');
                         imgElement.src = '../output_folder/' + image.path;
                         imgElement.alt = image.tags.join(', ');
-                        imgElement.onclick = () => { window.location.href = '/image/' + image.path };
                         imageContainer.appendChild(imgElement);
+                        
+                        const infoDiv = document.createElement('div');
+                        infoDiv.className = 'image-info';
+                        infoDiv.innerHTML = `
+                            <h3>${image.title}</h3>
+                            <p>${image.tags.slice(0, 3).join(', ')}</p>
+                        `;
+                        imageContainer.appendChild(infoDiv);
+                        
+                        imageContainer.onclick = () => { window.location.href = '/image/' + image.path };
                         resultsDiv.appendChild(imageContainer);
                     });
 
@@ -962,11 +984,11 @@ CATEGORY_TEMPLATE = """
             <a href="/" class="header-link">Home</a>
         </div>
     </header>
-    <h1>
+    <center><h1>
     {% for word in category.split('_') %}
         <a href="/category/{{ word }}">{{ word }}</a>{% if not loop.last %} {% endif %}
     {% endfor %}
-    </h1>
+    </h1></center>
 
     <div class="pagination" id="pagination-top"></div>
     
@@ -1027,6 +1049,10 @@ def search():
     for folder, images in image_bank.items():
         for image in images:
             if any(query in tag.lower() for tag in image['tags']):
+                # Get the title from the captions dictionary
+                filename = os.path.basename(image['path'])
+                title = captions.get(filename, {}).get('title', '')  # Use an empty string as the default value
+                image['title'] = title  # Add the title to the image object
                 results.append(image)
     
     paginated_results, total_items = paginate_items(results, page, items_per_page)
@@ -1046,6 +1072,12 @@ def category_data(category):
     _, categories = load_image_bank(database_file)
     page = int(request.args.get('page', 1))
     results = categories.get(category, [])
+    
+    for image in results:
+        # Get the title from the captions dictionary
+        caption_key = os.path.join("input_images", os.path.basename(image['path']))
+        title = captions.get(caption_key, {}).get('title', '')  # Use an empty string as the default value
+        image['title'] = title  # Add the title to the image object
     
     paginated_results, total_items = paginate_items(results, page, items_per_page)
     total_pages = (total_items + items_per_page - 1) // items_per_page
@@ -1144,6 +1176,30 @@ def display_image(filename):
                                   img_size=img_size,
                                   file_size=file_size_mb,
                                   available_formats=available_formats)
+@app.route('/latest-images')
+def latest_images():
+    page = int(request.args.get('page', 1))
+    all_images = []
+    
+    for folder, images in image_bank.items():
+        for image in images:
+            # Get the title from the captions dictionary
+            caption_key = os.path.join("input_images", os.path.basename(image['path']))
+            title = captions.get(caption_key, {}).get('title', '')  # Use an empty string as the default value
+            print(f"Image Path: {image['path']}, Title: {title}")  # Debugging statement
+            image['title'] = title  # Add the title to the image object
+            all_images.append(image)
+    
+    # Sort images by date added (assuming there's a 'date_added' field)
+    sorted_images = sorted(all_images, key=lambda x: x.get('date_added', ''), reverse=True)
+    
+    paginated_results, total_items = paginate_items(sorted_images, page, items_per_page)
+    total_pages = (total_items + items_per_page - 1) // items_per_page
+    
+    return jsonify({
+        'images': paginated_results,
+        'total_pages': total_pages
+    })
 
 @app.route('/download/<path:filename>/<format>')
 def download_image(filename, format):
