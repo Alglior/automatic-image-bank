@@ -1,16 +1,16 @@
 import os
 import json
-from flask import Flask, request,current_app,send_file,abort, render_template_string, jsonify, send_from_directory
+from flask import Flask, request,current_app,url_for,send_file,abort, render_template_string, jsonify, send_from_directory
 from PIL import Image
 import io
 import logging
 from operator import itemgetter
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static')
 database_file = 'image_bank.json'
 image_root_folder = 'output_folder'  # The root folder containing categorized images
-items_per_page = 50  # Number of items per page for pagination
+items_per_page = 100  # Number of items per page for pagination
 
 # HTML template for the search interface
 HTML_TEMPLATE = """
@@ -19,112 +19,14 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <title>Image Bank Search</title>
-    <style>
-        body {
-            background-color: #0f0f1a;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        header, footer {
-            background-color: #1a1a2e;
-            padding: 20px;
-            text-align: center;
-        }
-        h1 {
-            color: #ffd700;
-            margin: 0 0 20px 0;
-        }
-        .search-container {
-            margin-bottom: 20px;
-        }
-        input[type="text"] {
-            width: 300px;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            margin-right: 10px;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #ffd700;
-            color: #1a1a2e;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        button:hover {
-            background-color: #e0c600;
-        }
-        #results {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
-            padding: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .image-container {
-            position: relative;
-            overflow: hidden;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            transition: transform 0.3s;
-        }
-        .image-container:hover {
-            transform: translateY(-5px);
-        }
-        .image-container img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        .image-info {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            transform: translateY(100%);
-            transition: transform 0.3s;
-        }
-        .image-container:hover .image-info {
-            transform: translateY(0);
-        }
-        .image-info h3 {
-            margin: 0;
-            font-size: 16px;
-            color: #ffd700;
-        }
-        .image-info p {
-            margin: 5px 0 0;
-            font-size: 14px;
-        }
-        .pagination {
-            display: flex;
-            justify-content: center;
-            margin: 20px 0;
-        }
-        .pagination button {
-            margin: 0 5px;
-        }
-        footer {
-            margin-top: auto;
-        }
-    </style>
-    <script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+   <script>
         let currentPage = 1;
         const itemsPerPage = {{ items_per_page }};
         const maxPageButtons = 8;
 
-        function searchImages(page = 1) {
+        function searchImages(page = 1, scrollToTop = false) {
             currentPage = page;
             const query = document.getElementById('searchBox').value.toLowerCase();
             const endpoint = query ? `/search?q=${query}&page=${page}` : `/latest-images?page=${page}`;
@@ -156,6 +58,10 @@ HTML_TEMPLATE = """
                     });
 
                     updatePagination(data.total_pages, page);
+
+                    if (scrollToTop) {
+                        window.scrollTo({top: 0, behavior: 'smooth'});
+                    }
                 });
         }
 
@@ -165,10 +71,10 @@ HTML_TEMPLATE = """
             paginationDivTop.innerHTML = '';
             paginationDivBottom.innerHTML = '';
 
-            const createPageButton = (page, text = page) => {
+            const createPageButton = (page, text = page, isBottom = false) => {
                 const pageButton = document.createElement('button');
                 pageButton.textContent = text;
-                pageButton.onclick = () => searchImages(page);
+                pageButton.onclick = () => searchImages(page, isBottom);
                 if (page === currentPage) {
                     pageButton.style.fontWeight = 'bold';
                 }
@@ -177,7 +83,7 @@ HTML_TEMPLATE = """
 
             if (currentPage > 1) {
                 paginationDivTop.appendChild(createPageButton(1, 'First'));
-                paginationDivBottom.appendChild(createPageButton(1, 'First'));
+                paginationDivBottom.appendChild(createPageButton(1, 'First', true));
             }
 
             const half = Math.floor(maxPageButtons / 2);
@@ -190,22 +96,37 @@ HTML_TEMPLATE = """
 
             for (let i = start; i <= end; i++) {
                 const pageButtonTop = createPageButton(i);
-                const pageButtonBottom = createPageButton(i);
+                const pageButtonBottom = createPageButton(i, i, true);
                 paginationDivTop.appendChild(pageButtonTop);
                 paginationDivBottom.appendChild(pageButtonBottom);
             }
 
             if (currentPage < totalPages) {
                 paginationDivTop.appendChild(createPageButton(totalPages, 'Last'));
-                paginationDivBottom.appendChild(createPageButton(totalPages, 'Last'));
+                paginationDivBottom.appendChild(createPageButton(totalPages, 'Last', true));
             }
         }
 
         window.onload = function() {
             searchImages();
             document.getElementById('searchBox').addEventListener('input', () => searchImages(1));
+            document.getElementById('stickySearchBox').addEventListener('input', () => {
+                document.getElementById('searchBox').value = document.getElementById('stickySearchBox').value;
+                searchImages(1);
+            });
+
+            window.addEventListener('scroll', function() {
+                var header = document.querySelector('header');
+                var sticky = document.querySelector('.sticky-search');
+                if (window.pageYOffset > header.offsetTop + header.offsetHeight) {
+                    sticky.style.display = 'block';
+                } else {
+                    sticky.style.display = 'none';
+                }
+            });
         }
     </script>
+
 </head>
 <body>
     <header>
@@ -216,6 +137,12 @@ HTML_TEMPLATE = """
             <button class="home-button" onclick="window.location.href='/categories'">View Categories</button>
         </div>
     </header>
+    <div class="sticky-search">
+        <div class="sticky-search-container">
+            <input type="text" id="stickySearchBox" placeholder="Enter tags to search">
+            <button onclick="searchImages()">Search</button>
+        </div>
+    </div>
     <div class="pagination" id="pagination-top"></div>
     <div id="results"></div>
     <div class="pagination" id="pagination-bottom"></div>
@@ -234,92 +161,7 @@ CATEGORIES_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <title>Categories</title>
-    <style>
-        body {
-            background-color: #0f0f1a;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        header, footer {
-            background-color: #1a1a2e;
-            padding: 20px;
-            text-align: center;
-        }
-        footer {
-            bottom: 0;
-            left: 0;
-        }
-        .header-link {
-            margin: 10px 0 0 0;
-            padding: 10px 20px;
-            background-color: #ffd700;
-            color: #1a1a40;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-        .header-link:hover {
-            background-color: #e0c600;
-        }
-        h1 {
-            color: #ffd700;
-            margin: 20px 0;
-        }
-        .category-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
-            margin: 20px 0;
-        }
-        .category-button {
-            position: relative;
-            margin: 10px;
-        }
-        .category-button img {
-            width: 200px;
-            height: 200px;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        .category-button img:hover {
-            transform: scale(1.05);
-        }
-        .category-button span {
-            position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-        }
-        .pagination {
-            display: flex;
-            justify-content: center;
-            margin: 20px;
-        }
-        .pagination button {
-            padding: 10px 15px;
-            margin: 5px;
-            background-color: #ffd700;
-            border: none;
-            border-radius: 5px;
-            color: #1a1a40;
-            cursor: pointer;
-        }
-        .pagination button:hover {
-            background-color: #e0c600;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script>
         let currentPage = 1;
         const maxPageButtons = 5;  // Limit the number of pagination buttons visible
@@ -426,252 +268,7 @@ IMAGE_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <title>{{ tags }}</title>
-    <style>
-        body {
-            background-color: #0f0f1a;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-        header, footer {
-            background-color: #1a1a2e;
-            padding: 10px;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
-        .header-links {
-            display: flex;
-            justify-content: center;
-            margin-top: 10px;
-        }
-        .header-link {
-            margin: 0 10px;
-            padding: 10px 20px;
-            background-color: #ffd700;
-            color: #1a1a40;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-        .header-link:hover {
-            background-color: #e0c600;
-        }
-        footer {
-            bottom: 0;
-            left: 0;
-        }
-        h1 {
-            color: #ffd700;
-            margin-top: 20px;
-        }
-        h1 a {
-            color: #ffd700;
-            text-decoration: none;
-        }
-        h1 a:hover {
-            text-decoration: underline;
-        }
-        img {
-            margin: 20px auto;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            display: block;
-        }
-        .download-button {
-            margin-top: 20px;
-            margin-bottom: 20px;
-        }
-        .download-button a {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #ffd700;
-            color: #1a1a40;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-        .download-button a:hover {
-            background-color: #e0c600;
-        }
-        .title {
-            font-size: 2.5em;
-            color: #ffd700;
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-            margin: 30px 0;
-            letter-spacing: 2px;
-        }
-        .description-box {
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px auto;
-            max-width: 80%;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-        .description-box p {
-            margin: 0;
-            line-height: 1.6;
-        }
-        .related-images {
-            margin-top: 40px;
-            padding: 20px;
-            background-color: rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-        }
-        .related-images {
-            margin-top: 40px;
-            padding: 20px;
-            background-color: rgba(255, 255, 255, 0.05);
-            border-radius: 10px;
-        }
-        .related-images h3 {
-            color: #ffd700;
-            margin-bottom: 20px;
-        }
-        .image-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 10px;
-            justify-items: center;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-        .image-grid a {
-            display: block;
-            width: 100%;
-            height: 0;
-            padding-bottom: 100%;
-            position: relative;
-            overflow: hidden;
-            border-radius: 20px;
-            transition: transform 0.3s ease;
-        }
-        .image-grid img {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 20px;
-            transition: transform 0.3s ease;
-        }
-        .image-grid a:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-        .image-grid a:hover img {
-            border-radius: 22px;
-        }
-        @media (max-width: 480px) {
-            .image-grid {
-                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            }
-        }
-        .image-container {
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            gap: 20px;
-            margin: 20px auto;
-            max-width: 1200px;
-            padding: 0 20px;
-        }
-        .main-image-wrapper {
-            flex: 1;
-            max-width: 70%;
-        }
-        .main-image {
-            width: 100%;
-            height: auto;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-        .image-info {
-            flex: 0 0 25%;
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            align-self: stretch;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-        .image-info h3 {
-            color: #ffd700;
-            margin-top: 0;
-        }
-        h3 {
-            color: #ffd700;
-            margin-top: 0;
-        }
-        .image-info p {
-            margin: 10px 0;
-        }
-        @media (max-width: 768px) {
-            .image-container {
-                flex-direction: column;
-                align-items: center;
-            }
-            .main-image-wrapper, .image-info {
-                max-width: 100%;
-                width: 100%;
-            }
-            .image-info {
-                margin-top: 20px;
-            }
-        }
-        .download-options {
-            margin-top: 20px;
-            margin-bottom: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .format-buttons {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-        .format-button {
-            padding: 8px 15px;
-            background-color: #2c2c6c;
-            color: #ffffff;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-        .format-button:hover, .format-button.selected {
-            background-color: #ffd700;
-            color: #1a1a40;
-        }
-        .download-button {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #ffd700;
-            color: #1a1a40;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 16px;
-            transition: background-color 0.3s ease;
-        }
-        .download-button:hover {
-            background-color: #e0c600;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     </div>
     <script>
         document.querySelectorAll('.format-button').forEach(button => {
@@ -767,128 +364,7 @@ CATEGORY_TEMPLATE = """
     <meta charset="UTF-8">
     <title>{{ category }}</title>
         <p>{{ description }}</p>
-    <style>
-        body {
-            background-color: #0f0f1a;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        header, footer {
-            background-color: #1a1a2e;
-            padding: 20px;
-            text-align: center;
-        }
-        .header-links {
-            display: flex;
-            justify-content: center;
-            margin-top: 10px;
-        }
-        .header-link {
-            margin: 0 10px;
-            padding: 10px 20px;
-            background-color: #ffd700;
-            color: #1a1a40;
-            text-decoration: none;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-        .header-link:hover {
-            background-color: #e0c600;
-        }
-        footer {
-            bottom: 0;
-            left: 0;
-        }
-        h1 {
-            color: #ffd700;
-            margin: 20px 0;
-        }
-        h1 a {
-            color: #ffd700;
-            text-decoration: none;
-        }
-        h1 a:hover {
-            text-decoration: underline;
-        }
-        #results {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
-            padding: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .image-container {
-            position: relative;
-            overflow: hidden;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            transition: transform 0.3s;
-        }
-        .image-container:hover {
-            transform: translateY(-5px);
-        }
-        .image-container img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        .image-info {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            transform: translateY(100%);
-            transition: transform 0.3s;
-        }
-        .image-container:hover .image-info {
-            transform: translateY(0);
-        }
-        .image-info h3 {
-            margin: 0;
-            font-size: 16px;
-            color: #ffd700;
-        }
-        .image-info p {
-            margin: 5px 0 0;
-            font-size: 14px;
-        }
-        img {
-            width: 100%; /* Image fills its container */
-            border-radius: 20px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        img:hover {
-            transform: scale(1.05);
-        }
-        .pagination {
-            display: flex;
-            justify-content: center;
-            margin: 20px;
-        }
-        .pagination button {
-            padding: 10px 15px;
-            margin: 5px;
-            background-color: #ffd700;
-            border: none;
-            border-radius: 5px;
-            color: #1a1a40;
-            cursor: pointer;
-        }
-        .pagination button:hover {
-            background-color: #e0c600;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <script>
         let currentPage = 1;
         const maxPageButtons = 5;  // Limit the number of pagination buttons visible
@@ -1000,9 +476,7 @@ CATEGORY_TEMPLATE = """
     </footer>
 </body>
 </html>
-
 """
-
 
 def load_image_bank(database_file):
     if os.path.exists(database_file):
